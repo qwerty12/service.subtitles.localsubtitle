@@ -4,11 +4,12 @@
        version="1.12.5"
        provider-name="peno">
   <requires>
-      <import addon="script.module.pysubs2" version="0.1.0"/>
+      <import addon="script.module.pysubs2" />
       <import addon="script.module.chardet" />
   </requires>
   <extension point="xbmc.subtitle.module"
              library="service.py" />
+  <extension point="xbmc.service" library="auto_service.py"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">LocalSubtitle</summary>
     <description lang="en">kodi addon to add a local subtitle to a video and since version 1.6.0 also dual subtitles.
