@@ -49,10 +49,6 @@ __temp__       = translatePath( os.path.join( __profile__, 'temp', '') )
 if p2:
     __temp__ = __temp__.decode("utf-8")
 
-if xbmcvfs.exists(__temp__):
-  shutil.rmtree(__temp__)
-xbmcvfs.mkdirs(__temp__)
-
 __msg_box__       = xbmcgui.Dialog()
 
 __subtitlepath__  = translatePath("special://subtitles")
