@@ -101,15 +101,14 @@ class KodiPlayer(xbmc.Player):
         #xbmc.log(json_query, xbmc.LOGERROR)
         json_response = json.loads(json_query)["result"]
 
-        if KodiPlayer.is_sdh(json_response["currentsubtitle"]):
+        is_sdh = lambda sub: ((sub["language"] == "eng")) and ((sub["isimpaired"]) or ("SDH" in sub["name"] and not "dub" in sub["name"].lower()))
+
+        if is_sdh(json_response["currentsubtitle"]):
             return
 
-        if (eng_sdh_idx := next((sub["index"] for sub in reversed(json_response["subtitles"]) if KodiPlayer.is_sdh(sub)), None)) is not None:
+        if (eng_sdh_idx := next((sub["index"] for sub in reversed(json_response["subtitles"]) if is_sdh(sub)), None)) is not None:
             self.setSubtitleStream(eng_sdh_idx)
 
-    @staticmethod
-    def is_sdh(sub):
-        return (sub["language"] == "eng") and (sub["isimpaired"] or "SDH" in sub["name"])
 
 if __name__ == "__main__":
     player = KodiPlayer()
