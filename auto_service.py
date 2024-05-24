@@ -106,7 +106,12 @@ class KodiPlayer(xbmc.Player):
         if is_sdh(json_response["currentsubtitle"]):
             return
 
-        if (eng_sdh_idx := next((sub["index"] for sub in reversed(json_response["subtitles"]) if is_sdh(sub)), None)) is not None:
+        eng_sdh_idx = next((sub["index"] for sub in reversed(json_response["subtitles"]) if is_sdh(sub)), None)
+
+        if eng_sdh_idx is None and json_response["currentsubtitle"]["name"].lower() == "forced":
+            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["language"] == "eng" and not "forced" in sub["name"].lower()), None)
+
+        if eng_sdh_idx is not None:
             self.setSubtitleStream(eng_sdh_idx)
 
 
