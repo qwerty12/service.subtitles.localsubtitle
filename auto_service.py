@@ -44,7 +44,7 @@ class KodiPlayer(xbmc.Player):
         for i, sub in enumerate(initial_sub_streams):
             if sub == "(External)":
                 return
-            elif del_idx == -1 and sub == "del (External)":
+            elif (del_idx == -1) and (sub == "del" or sub == "del (External)"):
                 del_idx = i
             elif gle_idx == -1 and sub == "gle":
                 gle_idx = i
