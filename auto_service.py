@@ -64,7 +64,7 @@ class KodiPlayer(xbmc.Player):
         substemp = []
         try:
             from tempfile import mktemp
-            from resources.lib.dualsubs import mergesubs
+            import resources.lib.dualsubs
 
             vid_basename = os.path.splitext(self.getPlayingFile())[0]
 
@@ -76,7 +76,26 @@ class KodiPlayer(xbmc.Player):
                     return
                 substemp.append(subtemp)
 
-            finalfile = mergesubs(substemp)
+            if resources.lib.dualsubs.__addon__.getSetting('bottom_background') == 'true':
+                finalfile = resources.lib.dualsubs.mergesubs(substemp)
+            elif not xbmcvfs.exists(vid_basename + ".bor.srt"):
+                finalfile = resources.lib.dualsubs.mergesubs(substemp)
+            else:
+                try:
+                    original_addon_instance = resources.lib.dualsubs.__addon__
+                    class AddonWrapper:
+                        def getSetting(self, id: str) -> str:
+                            if id != "bottom_background":
+                                return original_addon_instance.getSetting(id)
+                            return "true"
+
+                        def __getattr__(self, name):
+                            return getattr(original_addon_instance, name)
+
+                    resources.lib.dualsubs.__addon__ = AddonWrapper()
+                    finalfile = resources.lib.dualsubs.mergesubs(substemp)
+                finally:
+                    resources.lib.dualsubs.__addon__ = original_addon_instance
 
             self.setSubtitles(finalfile)
             self.setSubtitleStream(initial_sub_streams_len - 1)
