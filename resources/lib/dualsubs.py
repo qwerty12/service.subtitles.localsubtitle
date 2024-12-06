@@ -46,7 +46,7 @@ def __equalText(t1, t2):
 
     return False
 
-def mergesubs(file):
+def mergesubs(file, **kwargs):
     if len(file) < 2:
       bottom_top = True
       bottom_bottom = False
@@ -120,9 +120,9 @@ def mergesubs(file):
       bottom_style.primarycolor=pysubs2.Color(255, 255, 0, 0)
     elif (__equalText(__addon__.getSetting('bottom_color'), 32532)): # 'White'
       bottom_style.primarycolor=pysubs2.Color(255, 255, 255, 0)
-    if (__addon__.getSetting('bottom_background') == 'true'):
-      bottom_style.backcolor=pysubs2.Color(0,0,0,128)
-      bottom_style.outlinecolor=pysubs2.Color(0,0,0,128)
+    if (__addon__.getSetting('bottom_background') == 'true' or kwargs.get('force_bottom_background', False)):
+      bottom_style.backcolor=pysubs2.Color(0,0,0,96)
+      bottom_style.outlinecolor=pysubs2.Color(0,0,0,96)
       bottom_style.borderstyle=4
     bottom_style.shadow = int(__addon__.getSetting('bottom_shadow'))
     bottom_style.outline = int(__addon__.getSetting('bottom_outline'))

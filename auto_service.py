@@ -76,7 +76,7 @@ class KodiPlayer(xbmc.Player):
                     return
                 substemp.append(subtemp)
 
-            finalfile = mergesubs(substemp)
+            finalfile = mergesubs(substemp, force_bottom_background=xbmcvfs.exists(vid_basename + ".bor.srt"))
 
             self.setSubtitles(finalfile)
             self.setSubtitleStream(initial_sub_streams_len - 1)
