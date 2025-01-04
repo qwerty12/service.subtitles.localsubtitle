@@ -51,10 +51,10 @@ class KodiPlayer(xbmc.Player):
             elif sub.lower().startswith("eng"):
                 eng_count += 1
 
-        if eng_count > 1:
-            self.find_sdh()
-        elif del_idx != -1 and gle_idx != -1:
+        if del_idx != -1 and gle_idx != -1:
             self.handle_dual_subs(initial_sub_streams_len)
+        elif eng_count > 1:
+            self.find_sdh()
         elif del_idx != -1:
             self.setSubtitleStream(del_idx)
         elif gle_idx != -1:
