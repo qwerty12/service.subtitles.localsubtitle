@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from .subtitleedit import strip_position_tags
 import xbmc, xbmcvfs
 import xbmcaddon
 import xbmcgui
@@ -63,6 +64,7 @@ def mergesubs(file):
     for sub in file:
       try:
         result = pysubs2.load(sub, encoding=__charset_detect(sub, bottom))
+        strip_position_tags(result)
       except Exception as e:
         __msg_box__.ok(__language__(32531), str(e))
         raise e
