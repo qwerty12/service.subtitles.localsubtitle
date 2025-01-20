@@ -1,4 +1,5 @@
 import os
+import json
 import xbmc
 import xbmcvfs
 import xbmcaddon
@@ -9,6 +10,9 @@ class KodiPlayer(xbmc.Player):
     def __init__(self):
         super().__init__()
         self.create_and_clean_temp()
+        if KodiPlayer.is_ass_override_style_not_positions():
+            KodiPlayer.set_ass_override_style(False)
+        self.position_override_disabled = False
 
     def create_and_clean_temp(self):
         __profile__ = xbmcvfs.translatePath(xbmcaddon.Addon().getAddonInfo('profile'))
@@ -18,10 +22,42 @@ class KodiPlayer(xbmc.Player):
             rmtree(self.__temp__)
         xbmcvfs.mkdirs(self.__temp__)
 
+    @staticmethod
+    def set_ass_override_style(disabled: bool):
+        if disabled:
+            xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.SetSettingValue","params":{"setting":"subtitles.overridestyles","value":0},"id":null}') # OverrideStyles::DISABLED
+        else:
+            xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.SetSettingValue","params":{"setting":"subtitles.overridestyles","value":1},"id":null}') # OverrideStyles::POSITIONS
+
+    @staticmethod
+    def is_ass_override_style_not_positions():
+        try:
+            return json.loads(xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue","params":{"setting":"subtitles.overridestyles"},"id":null}'))["result"]["value"] != 1
+        except Exception:
+            return True
+
+    def end(self):
+        if self.position_override_disabled:
+            KodiPlayer.set_ass_override_style(False)
+            self.position_override_disabled = False
+
+    def onPlayBackEnded(self):
+        if not self.isPlaying(): # not xbmc.getCondVisibility("Player.HasMedia")
+            self.end()
+
+    def onPlayBackError(self):
+        self.end()
+
+    def onPlayBackStopped(self):
+        self.end()
+
+    #def onPlayBackStarted(self):
+    #    self.end()
+
     def onAVStarted(self):
         try:
             initial_sub_streams = self.getAvailableSubtitleStreams()
-        except:
+        except Exception:
             return
 
         if not initial_sub_streams:
@@ -71,8 +107,7 @@ class KodiPlayer(xbmc.Player):
             subs = [vid_basename + ".del.srt", vid_basename + ".gle.srt"]
             for sub in subs:
                 subtemp = mktemp(suffix=".srt", dir=self.__temp__)
-                xbmcvfs.copy(sub, subtemp)
-                if not os.path.exists(subtemp):
+                if not xbmcvfs.copy(sub, subtemp):
                     return
                 substemp.append(subtemp)
 
@@ -97,18 +132,20 @@ class KodiPlayer(xbmc.Player):
                 finally:
                     resources.lib.dualsubs.__addon__ = original_addon_instance
 
+            if not self.position_override_disabled:
+                KodiPlayer.set_ass_override_style(True)
+                self.position_override_disabled = True
             self.setSubtitles(finalfile)
             self.setSubtitleStream(initial_sub_streams_len - 1)
         finally:
             for subtemp in substemp:
                 try:
                     xbmcvfs.delete(subtemp)
-                except:
+                except Exception:
                     pass
 
     def find_sdh(self):
         # https://github.com/rockrider69/service.LanguagePreferenceManager/blob/V1.0.4/resources/lib/prefutils.py#L391
-        import json
         activePlayerID = json.loads(xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": null}'))['result'][0]['playerid']
         details_query_dict = {  "jsonrpc": "2.0",
                                 "method": "Player.GetProperties",
