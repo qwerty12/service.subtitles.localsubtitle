@@ -7,6 +7,13 @@ import xbmcaddon
 
 class KodiPlayer(xbmc.Player):
 
+    @staticmethod
+    def is_logging_enabled():
+        resp = xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue","params":{"setting":"debug.showloginfo"},"id":null}')
+        return not (resp and resp.startswith('{"error":'))
+
+    ENABLE_LOG = is_logging_enabled.__func__() # remove this dumb shit when Kodi finally upgrades its Python
+
     def __init__(self):
         super().__init__()
         self.create_and_clean_temp()
@@ -16,7 +23,6 @@ class KodiPlayer(xbmc.Player):
         if KodiPlayer.is_sub_border_background_not_none():
             KodiPlayer.set_sub_border_background(False)
         self.border_override_enabled = False
-        self.enable_log = KodiPlayer.is_logging_enabled()
 
     def create_and_clean_temp(self):
         __profile__ = xbmcvfs.translatePath(xbmcaddon.Addon().getAddonInfo('profile'))
@@ -54,11 +60,6 @@ class KodiPlayer(xbmc.Player):
         except Exception:
             return True
 
-    @staticmethod
-    def is_logging_enabled():
-        resp = xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue","params":{"setting":"debug.showloginfo"},"id":null}')
-        return not (resp and resp.startswith('{"error":'))
-
     def end(self):
         if self.position_override_disabled:
             KodiPlayer.set_ass_override_style(False)
@@ -95,41 +96,56 @@ class KodiPlayer(xbmc.Player):
         if initial_sub_streams_len == 0:
             return
 
-        if self.enable_log: xbmc.log(";".join(initial_sub_streams) + ";", xbmc.LOGERROR)
+        if KodiPlayer.ENABLE_LOG: xbmc.log(" | ".join(f"{i}={sub}" for i, sub in enumerate(initial_sub_streams)), xbmc.LOGERROR)
 
         if initial_sub_streams_len == 1:
             self.showSubtitles(True)
             return
 
-        del_idx = -1
-        gle_idx = -1
+        new_idx = None
+        del_idx = None
+        gle_idx = None
         eng_count = 0
         bor_on = False
+        straight_ext_found = False
 
         for i, sub in enumerate(initial_sub_streams):
-            if sub == "(External)":
-                return
-            elif (del_idx == -1) and (sub == "del" or sub == "del (External)"):
-                del_idx = i
-            elif gle_idx == -1 and sub == "gle":
-                gle_idx = i
-            elif sub.lower().startswith("eng"):
-                eng_count += 1
+            if not straight_ext_found and sub == "(External)":
+                straight_ext_found = True
+                if bor_on:
+                    break
             elif not bor_on and sub == "bor":
                 bor_on = True
+                if straight_ext_found:
+                    break
+            elif (del_idx is None) and (sub == "del" or sub == "del (External)"):
+                del_idx = i
+            elif gle_idx is None and sub == "gle":
+                gle_idx = i
+            elif not straight_ext_found and sub.lower().startswith("eng"):
+                eng_count += 1
 
-        if del_idx != -1 and gle_idx != -1:
-            self.handle_dual_subs(initial_sub_streams_len)
-        elif eng_count > 1:
-            self.find_sdh()
-        elif del_idx != -1:
-            self.setSubtitleStream(del_idx)
-        elif gle_idx != -1:
-            self.setSubtitleStream(gle_idx)
-        elif bor_on:
+        if bor_on:
             if not self.border_override_enabled:
                 KodiPlayer.set_sub_border_background(True)
                 self.border_override_enabled = True
+
+        if straight_ext_found:
+            return
+
+        if del_idx is not None and gle_idx is not None:
+            new_idx = self.handle_dual_subs(initial_sub_streams_len)
+        elif eng_count > 1:
+            new_idx = KodiPlayer.find_sdh()
+        elif del_idx is not None:
+            new_idx = del_idx
+        elif gle_idx is not None:
+            new_idx = gle_idx
+        elif bor_on and player.getSubtitles() == "bor":
+            new_idx = KodiPlayer.find_sdh(True)
+
+        if new_idx is not None:
+            self.setSubtitleStream(new_idx)
 
     def handle_dual_subs(self, initial_sub_streams_len):
         substemp = []
@@ -143,7 +159,7 @@ class KodiPlayer(xbmc.Player):
             for sub in subs:
                 subtemp = mktemp(suffix=".srt", dir=self.__temp__)
                 if not xbmcvfs.copy(sub, subtemp):
-                    return
+                    return None
                 substemp.append(subtemp)
 
             if resources.lib.dualsubs.__addon__.getSetting('bottom_background') == 'true':
@@ -172,7 +188,7 @@ class KodiPlayer(xbmc.Player):
                 KodiPlayer.set_ass_override_style(True)
                 self.position_override_disabled = True
             self.setSubtitles(finalfile)
-            self.setSubtitleStream(initial_sub_streams_len - 1)
+            return initial_sub_streams_len - 1
         finally:
             for subtemp in substemp:
                 try:
@@ -180,7 +196,35 @@ class KodiPlayer(xbmc.Player):
                 except Exception:
                     pass
 
-    def find_sdh(self):
+    @staticmethod
+    def find_sdh(fuck_it=False):
+        json_response = KodiPlayer.query_available_subs()
+        eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["name"] == "(External)" and sub["language"] == "eng"), None)
+
+        if eng_sdh_idx is None:
+            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["name"] == "(External)" and not sub.get("language")), None)
+
+        if eng_sdh_idx is None:
+            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["name"] == "(External)" and sub["language"] == "hin"), None)
+
+        if eng_sdh_idx is None:
+            is_sdh = lambda sub: (((sub["language"] == "eng"))) and (((sub["isimpaired"])) or (("SDH" in sub["name"] or sub["name"] == "HI") and not "dub" in sub["name"].lower()))
+
+            if is_sdh(json_response["currentsubtitle"]):
+                return None
+
+            eng_sdh_idx = next((sub["index"] for sub in reversed(json_response["subtitles"]) if is_sdh(sub)), None)
+
+        if (eng_sdh_idx is None) and (json_response["currentsubtitle"]["isforced"] or json_response["currentsubtitle"]["name"].lower() == "forced"):
+            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["language"] == "eng" and not sub["isforced"] and not "forced" in sub["name"].lower()), None)
+
+        if fuck_it and eng_sdh_idx is None:
+            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["name"] == "(External)" and sub["language"] != "bor"), None)
+
+        return eng_sdh_idx
+
+    @staticmethod
+    def query_available_subs():
         # https://github.com/rockrider69/service.LanguagePreferenceManager/blob/V1.0.4/resources/lib/prefutils.py#L391
         activePlayerID = 1 #json.loads(xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Player.GetActivePlayers","id":null}'))["result"][0]["playerid"]
         details_query_dict = { "jsonrpc": "2.0",
@@ -189,25 +233,8 @@ class KodiPlayer(xbmc.Player):
                                             "playerid":   activePlayerID },
                                "id": None }
         json_response = xbmc.executeJSONRPC(json.dumps(details_query_dict))
-        if self.enable_log: xbmc.log(json_response, xbmc.LOGERROR)
-        json_response = json.loads(json_response)["result"]
-
-        eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["name"] == "(External)" and sub["language"] == "hin"), None)
-
-        if eng_sdh_idx is None:
-            is_sdh = lambda sub: (((sub["language"] == "eng"))) and (((sub["isimpaired"])) or (("SDH" in sub["name"] or sub["name"] == "HI") and not "dub" in sub["name"].lower()))
-
-            if is_sdh(json_response["currentsubtitle"]):
-                return
-
-            eng_sdh_idx = next((sub["index"] for sub in reversed(json_response["subtitles"]) if is_sdh(sub)), None)
-
-        if (eng_sdh_idx is None) and (json_response["currentsubtitle"]["isforced"] or json_response["currentsubtitle"]["name"].lower() == "forced"):
-            eng_sdh_idx = next((sub["index"] for sub in json_response["subtitles"] if sub["language"] == "eng" and not sub["isforced"] and not "forced" in sub["name"].lower()), None)
-
-        if eng_sdh_idx is not None:
-            self.setSubtitleStream(eng_sdh_idx)
-
+        if KodiPlayer.ENABLE_LOG: xbmc.log(json_response, xbmc.LOGERROR)
+        return json.loads(json_response)["result"]
 
 if __name__ == "__main__":
     player = KodiPlayer()
